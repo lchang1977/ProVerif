@@ -1,0 +1,78 @@
+(*improved protocol*)
+free c.
+fun pk/1.
+fun sk/1.
+
+(* SPsymmetric key encryption *)
+fun aenc/2.
+reduc adec(aenc(y,pk(x)),sk(x)) = y.
+
+(* Symmetric key encryption *)
+fun senc/2.
+reduc sdec(senc(y, x),x) = y.
+
+(* Digital signatures *)
+fun sign/2.
+
+(*SIGNATURE & EQUATIONAL THEORY*)
+reduc getmess(sign(m,sk(x)))=m.
+reduc checksign(sign(m,sk(x)),pk(x))=m.
+
+query attacker:dataR.
+
+query evinj:EndR(x,y)==>evinj:StartC(x,y).
+query evinj:EndC(x)==>evinj:StartR(x).
+query ev:EndR(x,y).(* 用于判定该事件是否发生，在前篇中该事件未发生故后续属性判定错误 *)
+query ev:EndC(x).
+
+(*process for Requester*)   
+let R=
+ new r1; 
+ out(c,(r1,pk(keyR)));
+ in(c,dC1);
+ let (dataCR,xpkkeyC) = adec(dC1,sk(keyR)) in
+ let (=r1,r2,=pk(keyR),xpkkeyC,keyRA1) = checksign(dataCR,pk(keyC)) in
+ event StartR(keyRA1);
+ new dataR; 
+ let rdataR1 = senc(dataR,keyRA1) in
+ let rdataR2 = sign(rdataR1,sk(keyR)) in
+ out(c,aenc((r1,r2,rdataR2),pk(keyC)));
+ 
+ in(c,dC2);
+ let (=r1,r2y,ra) = adec(dC2,sk(keyR)) in
+ if r2y = r2 then event EndR(keyRA1,pk(keyR)).
+  
+(*process for Controller*)   
+let C =  
+ in(c,dataR1);
+ let (randR,xpkkeyR) = dataR1 in
+ new c1;new keyra;
+ event StartC(keyRC,xpkkeyR);
+ let cdata = (randR,c1,xpkkeyR,keyra) in
+ out(c,aenc((sign(cdata,sk(keyC))),xpkkeyR));
+ 
+ in(c,dataR2);
+ let (=randR,=c1,dataR3) = adec(dataR2,sk(keyC)) in
+ let dataR4 = checksign(dataR3,xpkkeyR) in
+ out(c,senc((randR,c1,keyra,dataR4),keyCA));
+ 
+ in(c,dataA1);
+ let (=randR,=c1,A1) = sdec(dataA1,keyCA) in
+ out(c,aenc((randR,c1,A1),xpkkeyR));
+ event EndC(keyRC).
+ 
+ (*process for Authenticator*)   
+ let A =  
+ in(c,dataC1);
+ new a4;
+ let (a,a2,a3,dataRC1) = sdec(dataC1,keyCA) in
+ let dataRC2 = sdec(dataRC1,a3) in
+ let dataAC = (a1,a2,a4) in
+ out(c,senc(dataAC,keyRC)).
+ 
+process
+ new keyR;new keyC; new keyCA;
+ new cpriv;
+ out(cpriv,keyRC);out(cpriv,keyCA);
+ out(c,pk(keyR));out(c,pk(keyC));
+ ((!R)|(!C)|(!A))
